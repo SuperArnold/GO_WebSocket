@@ -103,11 +103,30 @@ func handleConn(conn net.Conn) {
 
 	// 4.
 	enteringChannel <- user
+
+	//閒置使用者
+	var userActive = make(chan struct{})
+	go func() {
+		d := 15 * time.Second
+		timer := time.NewTimer(d)
+		for {
+			select {
+			case <-timer.C:
+				conn.Close()
+			case <-userActive:
+				timer.Reset(d)
+			}
+		}
+	}()
+
 	// 5.
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
 		userMessage.Content = strconv.Itoa(user.ID) + ":" + input.Text()
 		messageChannel <- userMessage
+
+		//使用者活著
+		userActive <- struct{}{}
 	}
 
 	if err := input.Err(); err != nil {
