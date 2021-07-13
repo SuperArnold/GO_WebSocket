@@ -17,6 +17,11 @@ type User struct {
 	MessageChannel chan string
 }
 
+type Message struct {
+	OwnerID int
+	Content string
+}
+
 var (
 	globalID int
 	idocker  sync.Mutex
@@ -25,7 +30,7 @@ var (
 	//使用者離開
 	leavingChannel = make(chan *User)
 	//傳送訊息
-	messageChannel = make(chan string, 8)
+	messageChannel = make(chan *Message)
 )
 
 func main() {
@@ -64,7 +69,10 @@ func broadcaster() {
 		case msg := <-messageChannel:
 			//給所有人發送訊息
 			for user := range users {
-				user.MessageChannel <- msg
+				if user.ID == msg.OwnerID {
+					continue
+				}
+				user.MessageChannel <- msg.Content
 			}
 		}
 	}
@@ -80,20 +88,26 @@ func handleConn(conn net.Conn) {
 		EnterAt:        time.Now(),
 		MessageChannel: make(chan string, 8),
 	}
+	userMessage := &Message{
+		OwnerID: user.ID,
+		Content: "",
+	}
 
 	// 2.
 	go sendMessage(conn, user.MessageChannel)
 
 	// 3.
 	user.MessageChannel <- "Welcome, " + strconv.Itoa(user.ID)
-	messageChannel <- "user:`" + strconv.Itoa(user.ID) + "` has enter"
+	userMessage.Content = "user:`" + strconv.Itoa(user.ID) + "` has enter"
+	messageChannel <- userMessage
 
 	// 4.
 	enteringChannel <- user
 	// 5.
 	input := bufio.NewScanner(conn)
 	for input.Scan() {
-		messageChannel <- strconv.Itoa(user.ID) + ":" + input.Text()
+		userMessage.Content = strconv.Itoa(user.ID) + ":" + input.Text()
+		messageChannel <- userMessage
 	}
 
 	if err := input.Err(); err != nil {
@@ -102,7 +116,8 @@ func handleConn(conn net.Conn) {
 
 	// 6.
 	leavingChannel <- user
-	messageChannel <- "user:`" + strconv.Itoa(user.ID) + "` has left"
+	userMessage.Content = "user:`" + strconv.Itoa(user.ID) + "` has left"
+	messageChannel <- userMessage
 
 }
 
